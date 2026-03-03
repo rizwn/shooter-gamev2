@@ -309,6 +309,20 @@ body {
   text-transform: uppercase; color: #fff; margin-bottom: 16px;
 }
 
+/* Lobby chat */
+.lobby-chat-log { height:160px; overflow-y:auto; background:rgba(0,0,0,0.3); border:1px solid var(--border); padding:10px; margin-bottom:10px; display:flex; flex-direction:column; gap:4px; }
+.lobby-chat-log::-webkit-scrollbar { width:3px; }
+.lobby-chat-log::-webkit-scrollbar-thumb { background:rgba(0,229,255,0.3); border-radius:2px; }
+.lc-msg { font-family:"Share Tech Mono",monospace; font-size:11px; line-height:1.6; word-break:break-word; }
+.lc-msg .lc-name { font-weight:bold; }
+.lc-msg.lc-sys { color:rgba(255,204,0,0.7); font-style:italic; }
+.lobby-chat-input-row { display:flex; gap:0; }
+.lobby-chat-input-row input { flex:1; background:rgba(0,0,0,0.4); border:1px solid var(--border); border-right:none; color:var(--text); font-family:"Share Tech Mono",monospace; font-size:12px; padding:9px 12px; outline:none; transition:border-color 0.2s; }
+.lobby-chat-input-row input:focus { border-color:var(--accent); }
+.lobby-chat-input-row input::placeholder { color:var(--muted); }
+.lobby-chat-input-row button { background:rgba(0,229,255,0.12); border:1px solid rgba(0,229,255,0.35); color:var(--accent); font-family:"Share Tech Mono",monospace; font-size:11px; letter-spacing:2px; padding:9px 16px; cursor:pointer; transition:background 0.15s; }
+.lobby-chat-input-row button:hover { background:rgba(0,229,255,0.25); }
+
 .lobby-slots {
   display: flex; flex-direction: column; gap: 8px;
   margin-bottom: 20px;
@@ -508,11 +522,10 @@ body {
 
       <div class="lobby-box">
         <h3>PARTY CHAT</h3>
-        <div style="font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:1px; line-height:2;">
-          VOICE CHAT<br>
-          <span style="color:var(--accent);">■</span> Coming soon<br><br>
-          TEXT CHAT<br>
-          <span style="color:var(--accent);">■</span> Coming soon
+        <div class="lobby-chat-log" id="lobby-chat-log"></div>
+        <div class="lobby-chat-input-row">
+          <input type="text" id="lobby-chat-input" placeholder="type a message..." maxlength="120" autocomplete="off" />
+          <button id="lobby-chat-send">SEND</button>
         </div>
       </div>
     </div>
@@ -534,6 +547,7 @@ body {
 <!-- TOAST -->
 <div id="toast"></div>
 
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <script>
 // ─── BACKGROUND ANIMATION ─────────────────────────────────────────────
 const bgCanvas = document.getElementById('bg-canvas');
@@ -642,6 +656,8 @@ function showFriendsPage() {
   document.getElementById('page-friends').classList.add('active');
   document.getElementById('nav-username-display').textContent = currentUser.toUpperCase();
   document.getElementById('nav-avatar-letter').textContent = currentUser[0].toUpperCase();
+  const roomId = (currentUser + '-default').toLowerCase().replace(/[^a-z0-9]/g,'-');
+  connectLobbyChat(roomId, currentUser);
   document.getElementById('nav-avatar-letter').style.background = `linear-gradient(135deg, ${avatarColor(currentUser)}, #003355)`;
   renderFriends();
   renderLobby();
@@ -791,9 +807,12 @@ document.getElementById('btn-launch').addEventListener('click', () => {
   const map = document.querySelector('.map-opt.selected')?.dataset.map || 'BASEPLATE';
   const ud = users[currentUser];
   // Use current user + map as the room ID so all lobby members join same room
-  const roomId = (currentUser + '-' + map).toLowerCase().replace(/[^a-z0-9]/g,'-');
-  const gameUrl = `shooter.html?user=${encodeURIComponent(currentUser)}&room=${encodeURIComponent(roomId)}`;
-  toast(`LAUNCHING ${map} — SHARE THIS ROOM: ${roomId.toUpperCase()}`, 'green');
+  const map2 = document.querySelector('.map-opt.selected')?.dataset.map || 'BASEPLATE';
+  const roomId2 = (currentUser + '-' + map2).toLowerCase().replace(/[^a-z0-9]/g,'-');
+  // reconnect lobby chat to same room as game
+  connectLobbyChat(roomId2, currentUser);
+  const gameUrl = `shooter.html?user=${encodeURIComponent(currentUser)}&room=${encodeURIComponent(roomId2)}`;
+  toast(`LAUNCHING! SHARE ROOM: ${roomId2.toUpperCase()}`, 'green');
   setTimeout(() => { window.open(gameUrl, '_blank'); }, 800);
 });
 
@@ -801,6 +820,64 @@ document.getElementById('btn-launch').addEventListener('click', () => {
 document.getElementById('friend-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') addFriend();
 });
+// ── LOBBY CHAT (Ably) ──────────────────────────────────────────────────
+const ABLY_KEY = 'eed3KQ.no0pow:SdH7fgwofQ4pno7VoUd6vHvr_t5i5ViLHMHpEonYtPg';
+let lobbyAbly = null, lobbyChannel = null;
+const LOBBY_COLORS = [0x00e5ff,0xff3c5a,0x00ff88,0xffcc00,0xaa44ff,0xff8800];
+function lcColorForName(n){let h=0;for(const c of n)h+=c.charCodeAt(0);return LOBBY_COLORS[h%LOBBY_COLORS.length];}
+function hexCol(c){'#'+c.toString(16).padStart(6,'0');}
+
+function addLobbyMsg(name, text, sys) {
+  const log = document.getElementById('lobby-chat-log');
+  if (!log) return;
+  const el = document.createElement('div');
+  el.className = 'lc-msg' + (sys ? ' lc-sys' : '');
+  if (sys) {
+    el.textContent = text;
+  } else {
+    const col = '#' + lcColorForName(name).toString(16).padStart(6,'0');
+    el.innerHTML = `<span class="lc-name" style="color:${col}">${name.toUpperCase()}:</span> ${text.replace(/</g,'&lt;')}`;
+  }
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+function connectLobbyChat(roomId, username) {
+  if (lobbyAbly) { try { lobbyAbly.close(); } catch(e){} }
+  const clientId = username + '_' + Math.random().toString(36).slice(2,6);
+  lobbyAbly = new Ably.Realtime({ key: ABLY_KEY, clientId });
+  lobbyAbly.connection.on('connected', () => {
+    lobbyChannel = lobbyAbly.channels.get('shooter-lobby:' + roomId);
+    lobbyChannel.presence.enter({ name: username });
+    lobbyChannel.subscribe('lobby-chat', m => {
+      if (m.clientId === clientId) return;
+      addLobbyMsg(m.data.name, m.data.text);
+    });
+    lobbyChannel.presence.subscribe('enter', m => {
+      if (m.clientId === clientId) return;
+      addLobbyMsg(null, m.data.name.toUpperCase() + ' joined the lobby', true);
+    });
+    lobbyChannel.presence.subscribe('leave', m => {
+      addLobbyMsg(null, (m.data?.name||'Someone').toUpperCase() + ' left', true);
+    });
+    addLobbyMsg(null, 'Connected to lobby chat · ' + roomId.toUpperCase(), true);
+  });
+}
+
+function sendLobbyChat() {
+  const inp = document.getElementById('lobby-chat-input');
+  const txt = inp.value.trim();
+  if (!txt || !lobbyChannel || !currentUser) return;
+  inp.value = '';
+  lobbyChannel.publish('lobby-chat', { name: currentUser, text: txt });
+  addLobbyMsg(currentUser, txt);
+}
+
+document.getElementById('lobby-chat-send').addEventListener('click', sendLobbyChat);
+document.getElementById('lobby-chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendLobbyChat();
+});
+
 </script>
 </body>
 </html>
