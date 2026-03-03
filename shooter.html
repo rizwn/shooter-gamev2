@@ -108,6 +108,9 @@ const params  = new URLSearchParams(location.search);
 const MY_NAME = params.get('user') || localStorage.getItem('shooter_user') || ('Player'+Math.floor(Math.random()*999));
 const ROOM    = params.get('room') || 'default';
 const MY_ID   = MY_NAME + '_' + Math.random().toString(36).slice(2,7);
+const MY_AV_RAW = params.get('av') || '{}';
+let MY_AV = {bodyColor:'#00e5ff',visorColor:'#00aaff',accentColor:'#00e5ff',pattern:'SOLID'};
+try{ MY_AV = {...MY_AV,...JSON.parse(decodeURIComponent(MY_AV_RAW))}; }catch(e){}
 
 document.getElementById('room-tag').textContent = `ROOM: ${ROOM.toUpperCase()}  ·  ${MY_NAME.toUpperCase()}`;
 
@@ -229,31 +232,57 @@ function makeNameSprite(name,color){
   sp.scale.set(1.5,0.38,1); return sp;
 }
 
-function makePlayerBody(name){
-  const color=colorForName(name);
+function hexToInt(hex){return parseInt((hex||'#00e5ff').replace('#',''),16);}
+function makePlayerBody(name, avData){
+  avData = avData || {};
+  const bc = hexToInt(avData.bodyColor||'#00e5ff');
+  const vc = hexToInt(avData.visorColor||'#00aaff');
+  const ac = hexToInt(avData.accentColor||'#00e5ff');
+  const nameColor = bc;
   const grp=new THREE.Group();
-  const bm=new THREE.MeshStandardMaterial({color,roughness:0.6,metalness:0.3});
-  const dm=new THREE.MeshStandardMaterial({color:0x111118,roughness:0.8});
-  const vz=new THREE.MeshStandardMaterial({color:0x00aaff,emissive:0x003366,emissiveIntensity:1,roughness:0,metalness:0.5});
-  // torso
-  const body=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.7,0.3),bm); body.position.y=1.1; body.castShadow=true; grp.add(body);
-  // head
-  const head=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.32,0.32),bm); head.position.y=1.62; head.castShadow=true; grp.add(head);
-  // visor
-  const visor=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.1,0.05),vz); visor.position.set(0,1.63,0.17); grp.add(visor);
-  // arms
-  [-0.34,0.34].forEach(x=>{const a=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.55,0.18),bm);a.position.set(x,1.05,0);a.castShadow=true;grp.add(a);});
-  // legs
-  [-0.13,0.13].forEach(x=>{const l=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.6,0.2),dm);l.position.set(x,0.45,0);l.castShadow=true;grp.add(l);});
-  // health bar bg
+  const bm=new THREE.MeshStandardMaterial({color:bc,roughness:0.55,metalness:0.35});
+  const dm=new THREE.MeshStandardMaterial({color:0x0d1018,roughness:0.85});
+  const vm=new THREE.MeshStandardMaterial({color:vc,emissive:vc,emissiveIntensity:0.6,roughness:0,metalness:0.5});
+  const am=new THREE.MeshStandardMaterial({color:ac,emissive:ac,emissiveIntensity:0.3,roughness:0.3,metalness:0.7});
+
+  // torso (root pivot)
+  const torso=new THREE.Group(); torso.position.y=1.1; grp.add(torso);
+  const bodyMesh=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.7,0.3),bm); bodyMesh.castShadow=true; torso.add(bodyMesh);
+  // accent stripe
+  const stripe=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.06,0.32),am); stripe.position.y=0.05; torso.add(stripe);
+
+  // head group (rotates with yaw)
+  const headGrp=new THREE.Group(); headGrp.position.y=0.52; torso.add(headGrp);
+  const headMesh=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.32,0.32),bm); headMesh.castShadow=true; headGrp.add(headMesh);
+  const visor=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.11,0.05),vm); visor.position.set(0,0.02,0.17); headGrp.add(visor);
+
+  // arm pivots (upper = shoulder, animates)
+  const armL=new THREE.Group(); armL.position.set(-0.34,0.3,0); torso.add(armL);
+  const armLMesh=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.55,0.18),bm); armLMesh.position.y=-0.275; armLMesh.castShadow=true; armL.add(armLMesh);
+  const armR=new THREE.Group(); armR.position.set(0.34,0.3,0); torso.add(armR);
+  const armRMesh=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.55,0.18),bm); armRMesh.position.y=-0.275; armRMesh.castShadow=true; armR.add(armRMesh);
+
+  // leg pivots (hip)
+  const legL=new THREE.Group(); legL.position.set(-0.13,0,0); grp.add(legL);
+  const legLMesh=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.6,0.2),dm); legLMesh.position.y=0.15; legLMesh.castShadow=true; legL.add(legLMesh);
+  const legR=new THREE.Group(); legR.position.set(0.13,0,0); grp.add(legR);
+  const legRMesh=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.6,0.2),dm); legRMesh.position.y=0.15; legRMesh.castShadow=true; legR.add(legRMesh);
+  // boots
+  [-0.13,0.13].forEach(x=>{const b=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.1,0.25),dm);b.position.set(x,-0.22,0.03);b.castShadow=true;grp.add(b);});
+
+  // health bar
   const hbg=new THREE.Mesh(new THREE.PlaneGeometry(0.6,0.065),new THREE.MeshBasicMaterial({color:0x330000,side:THREE.DoubleSide,depthTest:false}));
-  hbg.position.set(0,2.08,0); hbg.rotation.x=-0.3; grp.add(hbg);
-  // health bar fill
+  hbg.position.set(0,2.18,0);hbg.rotation.x=-0.3;grp.add(hbg);
   const hbf=new THREE.Mesh(new THREE.PlaneGeometry(0.6,0.065),new THREE.MeshBasicMaterial({color:0x00ff44,side:THREE.DoubleSide,depthTest:false}));
-  hbf.position.set(0,2.09,0.001); hbf.rotation.x=-0.3; grp.add(hbf);
+  hbf.position.set(0,2.19,0.001);hbf.rotation.x=-0.3;grp.add(hbf);
   grp.userData.hbFill=hbf;
-  // name tag
-  const sp=makeNameSprite(name,color); sp.position.set(0,2.25,0); grp.add(sp);
+
+  // name sprite
+  const sp=makeNameSprite(name,nameColor); sp.position.set(0,2.35,0); grp.add(sp);
+
+  // store bones for animation
+  grp.userData.bones={torso,headGrp,armL,armR,legL,legR};
+  grp.userData.animTime=Math.random()*Math.PI*2; // offset so not all in sync
   return grp;
 }
 
@@ -264,11 +293,11 @@ function setRemoteHealth(id,hp){
   f.scale.x=pct; f.position.x=(pct-1)*0.3;
 }
 
-function getOrCreate(id,name){
+function getOrCreate(id,name,avData){
   if(!remotePlayers[id]){
-    const mesh=makePlayerBody(name||id);
+    const mesh=makePlayerBody(name||id,avData||{});
     scene.add(mesh);
-    remotePlayers[id]={mesh,health:100,lastSeen:Date.now(),name:name||id};
+    remotePlayers[id]={mesh,health:100,lastSeen:Date.now(),name:name||id,av:avData||{}};
   }
   return remotePlayers[id];
 }
@@ -420,10 +449,11 @@ ably.connection.on('connected',()=>{
   // Position sync
   ch.subscribe('pos',m=>{
     if(m.clientId===MY_ID)return;
-    const d=m.data, rp=getOrCreate(m.clientId,d.name);
+    const d=m.data, rp=getOrCreate(m.clientId,d.name,d.av);
     rp.mesh.position.set(d.x,0,d.z);
     rp.mesh.rotation.y=d.ry;
     rp.lastSeen=Date.now();
+    rp.moving=d.moving||false;
     setRemoteHealth(m.clientId,d.hp);
     updateUI();
   });
@@ -477,7 +507,7 @@ ably.connection.on('disconnected',()=>{connEl.textContent='○ DISCONNECTED';con
 let lastPos=0;
 function broadcastPos(){
   const now=Date.now(); if(now-lastPos<50||!ch||isDead)return; lastPos=now;
-  ch.publish('pos',{name:MY_NAME,x:camera.position.x,y:camera.position.y,z:camera.position.z,ry:yaw,hp:myHealth});
+  ch.publish('pos',{name:MY_NAME,x:camera.position.x,y:camera.position.y,z:camera.position.z,ry:yaw,hp:myHealth,av:MY_AV,moving:mv.lengthSq()>0});
 }
 
 // ── MAIN LOOP ──────────────────────────────────────────────────────────
@@ -545,10 +575,29 @@ function update(dt){
     }
   }
 
-  // Stale player cleanup
+  // Stale player cleanup + animations
   const now=Date.now();
   for(const[id,rp]of Object.entries(remotePlayers)){
-    if(now-rp.lastSeen>8000)removeRemote(id);
+    if(now-rp.lastSeen>8000){removeRemote(id);continue;}
+    const b=rp.mesh.userData.bones;
+    if(!b)continue;
+    rp.mesh.userData.animTime=(rp.mesh.userData.animTime||0)+dt;
+    const t=rp.mesh.userData.animTime;
+    const isMoving=rp.moving||false;
+    const spd=isMoving?7:0.8; // idle sway vs walk speed
+    const amp=isMoving?0.55:0.04; // walk vs idle amplitude
+    // legs
+    b.legL.rotation.x=Math.sin(t*spd)*amp;
+    b.legR.rotation.x=-Math.sin(t*spd)*amp;
+    // arms (opposite to legs)
+    b.armL.rotation.x=-Math.sin(t*spd)*amp*0.7;
+    b.armR.rotation.x=Math.sin(t*spd)*amp*0.7;
+    // torso bob
+    b.torso.position.y=1.1+Math.abs(Math.sin(t*spd))*( isMoving?0.04:0.008);
+    // head look direction (yaw)
+    b.headGrp.rotation.y=0; // already handled by whole mesh rotation
+    // idle head nod
+    if(!isMoving) b.headGrp.rotation.x=Math.sin(t*0.7)*0.015;
   }
 
   broadcastPos();
