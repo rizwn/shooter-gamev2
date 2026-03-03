@@ -41,6 +41,21 @@
   #conn-status.ok { color:rgba(0,255,136,0.7); }
   #conn-status.err { color:rgba(255,60,90,0.9); }
   #room-tag { position:absolute; top:12px; left:50%; transform:translateX(-50%); font-size:10px; letter-spacing:3px; color:rgba(255,255,255,0.2); text-align:center; }
+
+  /* ── CHAT ── */
+  #chat-wrap { position:absolute; bottom:60px; left:24px; width:320px; pointer-events:none; }
+  #chat-log { max-height:160px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; margin-bottom:8px; padding-right:4px; }
+  #chat-log::-webkit-scrollbar { width:3px; }
+  #chat-log::-webkit-scrollbar-thumb { background:rgba(0,229,255,0.3); border-radius:2px; }
+  .chat-msg { font-size:12px; letter-spacing:1px; line-height:1.5; background:rgba(0,0,0,0.5); padding:4px 10px; border-left:2px solid rgba(0,229,255,0.4); animation:msgIn 0.15s ease; word-break:break-word; }
+  .chat-msg .cn { font-weight:bold; }
+  .chat-msg.sys { border-left-color:rgba(255,204,0,0.5); color:rgba(255,204,0,0.8); font-style:italic; }
+  @keyframes msgIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+  #chat-input-row { display:flex; gap:0; opacity:0; transition:opacity 0.2s; pointer-events:none; }
+  #chat-input-row.open { opacity:1; pointer-events:all; }
+  #chat-input { flex:1; background:rgba(0,0,0,0.75); border:1px solid rgba(0,229,255,0.4); border-right:none; color:#fff; font-family:"Courier New",monospace; font-size:12px; padding:8px 12px; outline:none; letter-spacing:1px; }
+  #chat-send { background:rgba(0,229,255,0.15); border:1px solid rgba(0,229,255,0.4); color:#00e5ff; font-family:"Courier New",monospace; font-size:11px; letter-spacing:2px; padding:8px 14px; cursor:pointer; }
+  #chat-hint { font-size:10px; letter-spacing:2px; color:rgba(255,255,255,0.2); }
 </style>
 </head>
 <body>
@@ -67,6 +82,14 @@
   </div>
   <div id="reload-msg">RELOADING...</div>
   <div id="conn-status">CONNECTING...</div>
+  <div id="chat-wrap">
+    <div id="chat-log"></div>
+    <div id="chat-input-row" id="chat-row">
+      <input id="chat-input" type="text" maxlength="120" placeholder="say something..." autocomplete="off" />
+      <button id="chat-send">SEND</button>
+    </div>
+    <div id="chat-hint">[ T ] CHAT</div>
+  </div>
   <div id="respawn-screen">
     <h2>YOU DIED</h2>
     <p>RESPAWNING IN</p>
@@ -537,6 +560,77 @@ function loop(){
   update(dt);
   renderer.render(scene,camera);
 }
+
+// ── IN-GAME CHAT ───────────────────────────────────────────────────────
+const chatLog = document.getElementById("chat-log");
+const chatRow = document.getElementById("chat-input-row");
+const chatInput = document.getElementById("chat-input");
+let chatOpen = false;
+
+function addChatMsg(name, text, sys) {
+  const el = document.createElement("div");
+  el.className = "chat-msg" + (sys ? " sys" : "");
+  if (sys) { el.textContent = text; }
+  else {
+    const col = "#" + colorForName(name).toString(16).padStart(6,"0");
+    el.innerHTML = `<span class="cn" style="color:${col}">${name.toUpperCase()}:</span> ${text.replace(/</g,"&lt;")}`;
+  }
+  chatLog.appendChild(el);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  // fade out after 8s unless chat is open
+  const timer = setTimeout(() => { if (!chatOpen) el.style.opacity = "0.0"; }, 8000);
+  el.dataset.timer = timer;
+}
+
+function openChat() {
+  chatOpen = true;
+  chatRow.classList.add("open");
+  chatInput.focus();
+  if (locked) document.exitPointerLock();
+  // restore all faded msgs
+  chatLog.querySelectorAll(".chat-msg").forEach(m => m.style.opacity = "1");
+}
+
+function closeChat() {
+  chatOpen = false;
+  chatRow.classList.remove("open");
+  chatInput.blur();
+}
+
+function sendChat() {
+  const txt = chatInput.value.trim();
+  if (!txt) { closeChat(); return; }
+  chatInput.value = "";
+  if (ch) ch.publish("chat", { name: MY_NAME, text: txt });
+  addChatMsg(MY_NAME, txt);
+  closeChat();
+}
+
+document.getElementById("chat-send").addEventListener("click", sendChat);
+chatInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); sendChat(); }
+  if (e.key === "Escape") { chatInput.value = ""; closeChat(); }
+  e.stopPropagation();
+});
+chatInput.addEventListener("keyup", e => e.stopPropagation());
+
+document.addEventListener("keydown", e => {
+  if (chatOpen) return;
+  if (e.code === "KeyT") { e.preventDefault(); openChat(); }
+});
+
+// receive chat from Ably
+function hookChat() {
+  if (!ch) { setTimeout(hookChat, 500); return; }
+  ch.subscribe("chat", m => {
+    if (m.clientId === MY_ID) return;
+    addChatMsg(m.data.name, m.data.text);
+  });
+}
+hookChat();
+
+// system messages
+ably.connection.on("connected", () => addChatMsg(null, "Connected to room: " + ROOM.toUpperCase(), true));
 loop();
 </script>
 </body>
