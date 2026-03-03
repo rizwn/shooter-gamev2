@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Shooter</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+  canvas { display: block; }
+  #ui {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 10;
+  }
+  #crosshair {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px; height: 20px;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: rgba(255,255,255,0.9);
+    box-shadow: 0 0 4px rgba(255,255,255,0.5);
+  }
+  #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+  #crosshair::after  { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+  #hud {
+    position: absolute; bottom: 30px; right: 40px;
+    color: #fff; font-size: 13px; text-align: right;
+    text-shadow: 0 0 8px rgba(0,200,255,0.8);
+    letter-spacing: 2px;
+  }
+  #ammo { font-size: 32px; font-weight: bold; color: #00e5ff; }
+  #ammo-label { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+  #health-bar-wrap {
+    position: absolute; bottom: 30px; left: 40px;
+    width: 200px;
+  }
+  #health-label { color: rgba(255,255,255,0.5); font-size: 11px; letter-spacing: 2px; margin-bottom: 6px; }
+  #health-bar {
+    width: 100%; height: 6px; background: rgba(255,255,255,0.1);
+    border-radius: 3px; overflow: hidden;
+  }
+  #health-fill {
+    width: 100%; height: 100%; background: linear-gradient(90deg, #00ff88, #00e5ff);
+    border-radius: 3px; transition: width 0.3s;
+    box-shadow: 0 0 8px rgba(0,255,136,0.6);
+  }
+  #info {
+    position: absolute; top: 20px; left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.4); font-size: 11px; letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+  #flash {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(255,200,50,0.15); opacity: 0; pointer-events: none;
+    transition: opacity 0.05s;
+  }
+  #locked {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 100; cursor: pointer;
+    pointer-events: all;
+  }
+  #locked h1 { color: #00e5ff; font-size: 28px; letter-spacing: 6px; margin-bottom: 12px; }
+  #locked p  { color: rgba(255,255,255,0.4); font-size: 12px; letter-spacing: 3px; }
+  #reload-msg {
+    position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+    color: #ffcc00; font-size: 12px; letter-spacing: 3px; opacity: 0;
+    transition: opacity 0.2s;
+  }
+</style>
+</head>
+<body>
+<div id="locked">
+  <h1>SHOOTER</h1>
+  <p>CLICK TO PLAY — WASD TO MOVE — MOUSE TO LOOK — LMB FIRE — R RELOAD</p>
+</div>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="crosshair"></div>
+  <div id="flash"></div>
+  <div id="hud">
+    <div id="ammo">30 / 90</div>
+    <div id="ammo-label">AMMO</div>
+  </div>
+  <div id="health-bar-wrap">
+    <div id="health-label">HEALTH</div>
+    <div id="health-bar"><div id="health-fill"></div></div>
+  </div>
+  <div id="info">WASD · MOUSE · LMB FIRE · R RELOAD</div>
+  <div id="reload-msg">RELOADING...</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── SCENE ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a1020);
+scene.fog = new THREE.FogExp2(0x0a1020, 0.012);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 300);
+camera.position.set(0, 1.7, 0);
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── LIGHTING ───────────────────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0x112233, 1.2);
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(0xffeedd, 1.8);
+sun.position.set(30, 60, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 200;
+sun.shadow.camera.left = -80;
+sun.shadow.camera.right = 80;
+sun.shadow.camera.top = 80;
+sun.shadow.camera.bottom = -80;
+sun.shadow.bias = -0.001;
+scene.add(sun);
+
+const fill = new THREE.PointLight(0x2244ff, 0.6, 80);
+fill.position.set(-20, 10, -20);
+scene.add(fill);
+
+const rim = new THREE.PointLight(0xff4422, 0.3, 60);
+rim.position.set(20, 5, 20);
+scene.add(rim);
+
+// ── BASEPLATE ──────────────────────────────────────────────────────────
+const floorGeo = new THREE.PlaneGeometry(200, 200, 40, 40);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: 0x1a2030,
+  roughness: 0.85,
+  metalness: 0.1,
+});
+// subtle grid vertex displacement
+const pos = floorGeo.attributes.position;
+for (let i = 0; i < pos.count; i++) {
+  const x = pos.getX(i), z = pos.getZ(i);
+  pos.setY(i, (Math.sin(x * 0.3) * Math.cos(z * 0.3)) * 0.08);
+}
+floorGeo.computeVertexNormals();
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// Grid lines overlay
+const gridHelper = new THREE.GridHelper(200, 50, 0x223355, 0x223355);
+gridHelper.position.y = 0.01;
+gridHelper.material.opacity = 0.35;
+gridHelper.material.transparent = true;
+scene.add(gridHelper);
+
+// Boundary walls (invisible collision only — just visual markers)
+function makeWallMarker(x, z, rx, rz) {
+  const g = new THREE.BoxGeometry(rx || 200, 0.5, rz || 0.5);
+  const m = new THREE.MeshStandardMaterial({ color: 0x334466, roughness: 0.9 });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set(x, 0.25, z);
+  mesh.receiveShadow = true;
+  mesh.castShadow = true;
+  scene.add(mesh);
+}
+makeWallMarker(0, -100, 200, 0.5);
+makeWallMarker(0,  100, 200, 0.5);
+makeWallMarker(-100, 0, 0.5, 200);
+makeWallMarker( 100, 0, 0.5, 200);
+
+// Some crates for visual interest
+const crateMat = new THREE.MeshStandardMaterial({ color: 0x5a4020, roughness: 0.9, metalness: 0.05 });
+function addCrate(x, z, s) {
+  const g = new THREE.BoxGeometry(s, s, s);
+  const m = new THREE.Mesh(g, crateMat);
+  m.position.set(x, s / 2, z);
+  m.rotation.y = Math.random() * 0.6;
+  m.castShadow = true;
+  m.receiveShadow = true;
+  scene.add(m);
+}
+const cratePositions = [
+  [8,8,1.2],[8,10,0.9],[-10,12,1.4],[15,-8,1],[14,-9,1.1],
+  [-12,-15,1.3],[-8,-9,0.8],[20,20,1],[22,19,0.9],[-20,-20,1.2],
+  [5,-20,1.1],[-5,20,1],[30,5,1.4],[-30,-5,1],[0,30,1.2],[0,-30,1]
+];
+cratePositions.forEach(([x,z,s]) => addCrate(x, z, s));
+
+// ── GUN MODEL (detailed FPS assault rifle) ─────────────────────────────
+const gunGroup = new THREE.Group();
+
+const metalDark  = new THREE.MeshStandardMaterial({ color: 0x1a1a22, roughness: 0.4, metalness: 0.9 });
+const metalMid   = new THREE.MeshStandardMaterial({ color: 0x2a2d35, roughness: 0.5, metalness: 0.85 });
+const metalLight = new THREE.MeshStandardMaterial({ color: 0x4a4e58, roughness: 0.3, metalness: 0.95 });
+const gripMat    = new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.95, metalness: 0.0 });
+const accentMat  = new THREE.MeshStandardMaterial({ color: 0x00aadd, roughness: 0.3, metalness: 0.6, emissive: 0x003355, emissiveIntensity: 0.5 });
+const stockMat   = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.8, metalness: 0.2 });
+
+function box(w, h, d, mat, ox=0, oy=0, oz=0, ry=0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(ox, oy, oz);
+  m.rotation.y = ry;
+  m.castShadow = true;
+  return m;
+}
+function cyl(rt, rb, h, seg, mat, ox=0, oy=0, oz=0, rx=0, ry=0, rz=0) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
+  m.position.set(ox, oy, oz);
+  m.rotation.set(rx, ry, rz);
+  m.castShadow = true;
+  return m;
+}
+
+// — Receiver / main body —
+gunGroup.add(box(0.055, 0.075, 0.42, metalDark, 0, 0, -0.05));
+// Ejection port cover
+gunGroup.add(box(0.015, 0.03, 0.08, metalLight, 0.028, 0.005, -0.04));
+// Top rail (picatinny)
+gunGroup.add(box(0.045, 0.012, 0.38, metalMid, 0, 0.044, -0.05));
+for (let i = 0; i < 14; i++) {
+  gunGroup.add(box(0.047, 0.007, 0.006, metalLight, 0, 0.052, -0.21 + i * 0.026));
+}
+// — Barrel —
+gunGroup.add(cyl(0.012, 0.012, 0.28, 8, metalDark, 0, 0.005, -0.30, Math.PI/2));
+// Barrel shroud / handguard
+gunGroup.add(box(0.052, 0.055, 0.22, metalMid, 0, 0, -0.26));
+// Handguard side slots
+for (let i = 0; i < 5; i++) {
+  gunGroup.add(box(0.055, 0.01, 0.025, metalDark, 0, 0.01, -0.18 - i * 0.038));
+  gunGroup.add(box(0.055, 0.01, 0.025, metalDark, 0, -0.01, -0.18 - i * 0.038));
+}
+// Muzzle device (compensator)
+gunGroup.add(cyl(0.016, 0.019, 0.045, 8, metalLight, 0, 0.005, -0.395, Math.PI/2));
+for (let i = 0; i < 4; i++) {
+  gunGroup.add(box(0.038, 0.008, 0.004, metalDark, 0, 0.016, -0.374 - i * 0.01));
+}
+// — Magazine —
+gunGroup.add(box(0.038, 0.11, 0.022, metalDark, 0, -0.09, -0.02));
+gunGroup.add(box(0.036, 0.03, 0.022, metalMid, 0, -0.04, -0.02)); // mag catch
+// Mag release button
+gunGroup.add(box(0.01, 0.01, 0.01, metalLight, 0.03, -0.025, -0.015));
+// — Pistol grip —
+const grip = new THREE.Group();
+grip.add(box(0.038, 0.09, 0.055, gripMat, 0, -0.06, 0));
+// grip texture bumps
+for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++) {
+  const b = box(0.004, 0.004, 0.006, metalMid, 0.02, -0.03 - r*0.013, -0.02 + c*0.015);
+  grip.add(b);
+  const b2 = box(0.004, 0.004, 0.006, metalMid, -0.02, -0.03 - r*0.013, -0.02 + c*0.015);
+  grip.add(b2);
+}
+grip.position.set(0, -0.005, 0.04);
+gunGroup.add(grip);
+// Trigger guard
+const tgCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, -0.025, 0.06),
+  new THREE.Vector3(0, -0.05, 0.04),
+  new THREE.Vector3(0, -0.055, 0.01),
+  new THREE.Vector3(0, -0.04, -0.015),
+  new THREE.Vector3(0, -0.02, -0.015),
+]);
+const tgGeo = new THREE.TubeGeometry(tgCurve, 12, 0.004, 6, false);
+gunGroup.add(new THREE.Mesh(tgGeo, metalMid));
+// Trigger
+gunGroup.add(box(0.006, 0.025, 0.005, metalLight, 0, -0.035, 0.025));
+// — Charging handle —
+gunGroup.add(box(0.012, 0.01, 0.028, metalLight, 0, 0.038, 0.07));
+gunGroup.add(box(0.024, 0.01, 0.01, metalLight, 0, 0.038, 0.06));
+// — Stock —
+gunGroup.add(box(0.042, 0.055, 0.12, stockMat, 0, -0.005, 0.13));
+gunGroup.add(box(0.025, 0.025, 0.08, metalDark, 0, -0.018, 0.19));
+gunGroup.add(box(0.042, 0.04, 0.015, stockMat, 0, 0.01, 0.245));
+gunGroup.add(box(0.042, 0.04, 0.015, stockMat, 0, -0.025, 0.245));
+// Stock cheek riser
+gunGroup.add(box(0.04, 0.02, 0.09, stockMat, 0, 0.03, 0.155));
+// Butt pad
+gunGroup.add(box(0.04, 0.06, 0.012, gripMat, 0, 0, 0.255));
+// — Optic (red dot sight) —
+const optic = new THREE.Group();
+optic.add(box(0.038, 0.03, 0.065, metalDark, 0, 0, 0));
+optic.add(box(0.03, 0.022, 0.055, metalMid, 0, 0.004, 0));
+// lens
+const lensMesh = new THREE.Mesh(
+  new THREE.CircleGeometry(0.01, 16),
+  new THREE.MeshStandardMaterial({ color: 0x003344, roughness: 0, metalness: 0.1, transparent: true, opacity: 0.7, emissive: 0x002233, emissiveIntensity: 1 })
+);
+lensMesh.rotation.y = Math.PI / 2;
+lensMesh.position.set(-0.016, 0.004, 0);
+optic.add(lensMesh);
+const lensMesh2 = lensMesh.clone();
+lensMesh2.rotation.y = -Math.PI / 2;
+lensMesh2.position.set(0.016, 0.004, 0);
+optic.add(lensMesh2);
+// red dot
+const dot = new THREE.Mesh(
+  new THREE.CircleGeometry(0.002, 8),
+  new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff2200, emissiveIntensity: 3 })
+);
+dot.rotation.y = Math.PI / 2;
+dot.position.set(-0.0155, 0.004, 0);
+optic.add(dot);
+// mount
+optic.add(box(0.046, 0.01, 0.055, metalLight, 0, -0.02, 0));
+optic.position.set(0, 0.062, -0.09);
+gunGroup.add(optic);
+// — Accent light strip —
+gunGroup.add(box(0.005, 0.004, 0.16, accentMat, 0.027, -0.005, -0.22));
+gunGroup.add(box(0.005, 0.004, 0.16, accentMat, -0.027, -0.005, -0.22));
+// — Fore grip —
+const fg = new THREE.Group();
+fg.add(cyl(0.012, 0.014, 0.06, 8, gripMat, 0, -0.03, 0));
+fg.add(cyl(0.014, 0.01, 0.008, 8, metalMid, 0, 0.004, 0));
+fg.add(cyl(0.01, 0.012, 0.008, 8, metalMid, 0, -0.064, 0));
+fg.position.set(0, -0.04, -0.25);
+fg.rotation.x = Math.PI / 2;
+gunGroup.add(fg);
+
+// — Sling mount —
+gunGroup.add(cyl(0.006, 0.006, 0.018, 8, metalLight, 0.03, 0, 0.21, 0, 0, Math.PI/2));
+
+// Position gun in camera view
+gunGroup.position.set(0.22, -0.18, -0.35);
+gunGroup.rotation.set(0.03, 0.1, -0.01);
+camera.add(gunGroup);
+scene.add(camera);
+
+// Muzzle flash light
+const muzzleLight = new THREE.PointLight(0xff8800, 0, 3);
+muzzleLight.position.set(0, 0.005, -0.42);
+gunGroup.add(muzzleLight);
+
+// ── PLAYER / MOVEMENT ──────────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => keys[e.code] = true);
+document.addEventListener('keyup',   e => keys[e.code] = false);
+
+let yaw = 0, pitch = 0;
+let locked = false;
+
+const lockScreen = document.getElementById('locked');
+lockScreen.addEventListener('click', () => {
+  canvas.requestPointerLock();
+});
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  lockScreen.style.display = locked ? 'none' : 'flex';
+});
+document.addEventListener('mousemove', e => {
+  if (!locked) return;
+  yaw   -= e.movementX * 0.0018;
+  pitch -= e.movementY * 0.0018;
+  pitch  = Math.max(-1.4, Math.min(1.4, pitch));
+});
+
+// ── SHOOTING SYSTEM ────────────────────────────────────────────────────
+let mag = 30, reserve = 90, isReloading = false, reloadTimer = 0;
+let shootCooldown = 0;
+const flashEl = document.getElementById('flash');
+const ammoEl  = document.getElementById('ammo');
+const reloadMsg = document.getElementById('reload-msg');
+
+const bullets = [];
+const bulletGeo = new THREE.SphereGeometry(0.03, 6, 6);
+const bulletMat = new THREE.MeshStandardMaterial({ color: 0xffdd44, emissive: 0xffaa00, emissiveIntensity: 2, metalness: 0.9, roughness: 0.1 });
+
+function shoot() {
+  if (isReloading || mag <= 0) {
+    if (mag <= 0 && !isReloading) startReload();
+    return;
+  }
+  mag--;
+  ammoEl.textContent = `${mag} / ${reserve}`;
+
+  // Muzzle flash
+  muzzleLight.intensity = 6;
+  setTimeout(() => muzzleLight.intensity = 0, 60);
+  flashEl.style.opacity = '1';
+  setTimeout(() => flashEl.style.opacity = '0', 60);
+
+  // Bullet
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const origin = camera.position.clone().add(dir.clone().multiplyScalar(0.5));
+  origin.y -= 0.05;
+
+  const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+  bullet.position.copy(origin);
+  bullet.userData.vel = dir.clone().multiplyScalar(1.4);
+  bullet.userData.life = 0;
+  scene.add(bullet);
+  bullets.push(bullet);
+
+  // Recoil anim
+  gunRecoilV = 0.025;
+}
+
+let gunRecoilV = 0, gunRecoilPos = 0;
+
+function startReload() {
+  if (reserve <= 0 || isReloading) return;
+  isReloading = true;
+  reloadTimer = 2.2;
+  reloadMsg.style.opacity = '1';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyR') startReload();
+});
+document.addEventListener('mousedown', e => {
+  if (e.button === 0 && locked) shoot();
+});
+
+// ── PARTICLES / HIT EFFECTS ────────────────────────────────────────────
+const particles = [];
+function spawnHit(pos) {
+  for (let i = 0; i < 6; i++) {
+    const pg = new THREE.SphereGeometry(0.02, 4, 4);
+    const pm = new THREE.MeshStandardMaterial({ color: 0xffaa22, emissive: 0xff6600, emissiveIntensity: 2 });
+    const p = new THREE.Mesh(pg, pm);
+    p.position.copy(pos);
+    p.userData.vel = new THREE.Vector3(
+      (Math.random()-0.5)*0.12,
+      Math.random()*0.08,
+      (Math.random()-0.5)*0.12
+    );
+    p.userData.life = 0.4 + Math.random() * 0.3;
+    scene.add(p);
+    particles.push(p);
+  }
+}
+
+// ── RAYCASTER for floor hit ────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+
+// ── CLOCK / LOOP ───────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+const SPEED = 8;
+
+function update(dt) {
+  // Movement
+  const move = new THREE.Vector3();
+  if (keys['KeyW'] || keys['ArrowUp'])    move.z -= 1;
+  if (keys['KeyS'] || keys['ArrowDown'])  move.z += 1;
+  if (keys['KeyA'] || keys['ArrowLeft'])  move.x -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) move.x += 1;
+  if (move.lengthSq() > 0) move.normalize();
+  move.applyEuler(new THREE.Euler(0, yaw, 0));
+  camera.position.add(move.multiplyScalar(SPEED * dt));
+
+  // Clamp to baseplate
+  camera.position.x = Math.max(-98, Math.min(98, camera.position.x));
+  camera.position.z = Math.max(-98, Math.min(98, camera.position.z));
+  camera.position.y = 1.7;
+
+  // Camera rotation
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = yaw;
+  camera.rotation.x = pitch;
+
+  // Bob
+  const bobSpeed = move.lengthSq() > 0 ? 7 : 0;
+  const t = clock.elapsedTime;
+  gunGroup.position.y = -0.18 + Math.sin(t * bobSpeed) * 0.004;
+  gunGroup.position.x =  0.22 + Math.sin(t * bobSpeed * 0.5) * 0.003;
+
+  // Recoil
+  gunRecoilPos += gunRecoilV;
+  gunRecoilV   *= 0.6;
+  gunRecoilPos *= 0.75;
+  gunGroup.position.z = -0.35 + gunRecoilPos;
+  gunGroup.rotation.x = 0.03 + gunRecoilPos * 0.8;
+
+  // Bullets
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.userData.life += dt;
+    b.userData.vel.y -= 9.8 * dt * 0.3;
+    b.position.add(b.userData.vel);
+
+    if (b.position.y <= 0.05) {
+      spawnHit(b.position.clone());
+      scene.remove(b);
+      bullets.splice(i, 1);
+    } else if (b.userData.life > 3) {
+      scene.remove(b);
+      bullets.splice(i, 1);
+    }
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.userData.life -= dt;
+    p.userData.vel.y -= 12 * dt;
+    p.position.add(p.userData.vel.clone().multiplyScalar(dt));
+    p.material.opacity = p.userData.life / 0.7;
+    p.material.transparent = true;
+    if (p.userData.life <= 0) {
+      scene.remove(p);
+      particles.splice(i, 1);
+    }
+  }
+
+  // Reload
+  if (isReloading) {
+    reloadTimer -= dt;
+    if (reloadTimer <= 0) {
+      const need = 30 - mag;
+      const give = Math.min(need, reserve);
+      mag += give;
+      reserve -= give;
+      isReloading = false;
+      reloadMsg.style.opacity = '0';
+      ammoEl.textContent = `${mag} / ${reserve}`;
+    }
+  }
+}
+
+function render() {
+  requestAnimationFrame(render);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (locked) update(dt);
+  renderer.render(scene, camera);
+}
+render();
+</script>
+</body>
+</html>
