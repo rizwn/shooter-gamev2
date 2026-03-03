@@ -47,13 +47,13 @@
   #chat-log { max-height:160px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; margin-bottom:8px; padding-right:4px; }
   #chat-log::-webkit-scrollbar { width:3px; }
   #chat-log::-webkit-scrollbar-thumb { background:rgba(0,229,255,0.3); border-radius:2px; }
-  .chat-msg { font-size:12px; letter-spacing:1px; line-height:1.5; background:rgba(0,0,0,0.5); padding:4px 10px; border-left:2px solid rgba(0,229,255,0.4); animation:msgIn 0.15s ease; word-break:break-word; }
+  .chat-msg { font-size:12px; letter-spacing:1px; line-height:1.5; color:#e8f4ff; background:rgba(10,20,40,0.75); padding:4px 10px; border-left:2px solid rgba(0,229,255,0.7); animation:msgIn 0.15s ease; word-break:break-word; text-shadow:0 0 8px rgba(0,200,255,0.3); }
   .chat-msg .cn { font-weight:bold; }
-  .chat-msg.sys { border-left-color:rgba(255,204,0,0.5); color:rgba(255,204,0,0.8); font-style:italic; }
+  .chat-msg.sys { border-left-color:rgba(255,204,0,0.8); color:#ffe566; font-style:italic; text-shadow:0 0 6px rgba(255,200,0,0.4); }
   @keyframes msgIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
   #chat-input-row { display:flex; gap:0; opacity:0; transition:opacity 0.2s; pointer-events:none; }
   #chat-input-row.open { opacity:1; pointer-events:all; }
-  #chat-input { flex:1; background:rgba(0,0,0,0.75); border:1px solid rgba(0,229,255,0.4); border-right:none; color:#fff; font-family:"Courier New",monospace; font-size:12px; padding:8px 12px; outline:none; letter-spacing:1px; }
+  #chat-input { flex:1; background:rgba(5,15,30,0.9); border:1px solid rgba(0,229,255,0.6); border-right:none; color:#e8f4ff; font-family:"Courier New",monospace; font-size:12px; padding:8px 12px; outline:none; letter-spacing:1px; }
   #chat-send { background:rgba(0,229,255,0.15); border:1px solid rgba(0,229,255,0.4); color:#00e5ff; font-family:"Courier New",monospace; font-size:11px; letter-spacing:2px; padding:8px 14px; cursor:pointer; }
   #chat-hint { font-size:10px; letter-spacing:2px; color:rgba(255,255,255,0.2); }
 </style>
