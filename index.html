@@ -790,8 +790,11 @@ document.querySelectorAll('.map-opt').forEach(opt => {
 document.getElementById('btn-launch').addEventListener('click', () => {
   const map = document.querySelector('.map-opt.selected')?.dataset.map || 'BASEPLATE';
   const ud = users[currentUser];
-  toast(`LAUNCHING ${map} WITH ${ud.lobby.length} PLAYER${ud.lobby.length>1?'S':''}...`, 'green');
-  setTimeout(() => { window.open('shooter.html', '_blank'); }, 800);
+  // Use current user + map as the room ID so all lobby members join same room
+  const roomId = (currentUser + '-' + map).toLowerCase().replace(/[^a-z0-9]/g,'-');
+  const gameUrl = `shooter.html?user=${encodeURIComponent(currentUser)}&room=${encodeURIComponent(roomId)}`;
+  toast(`LAUNCHING ${map} — SHARE THIS ROOM: ${roomId.toUpperCase()}`, 'green');
+  setTimeout(() => { window.open(gameUrl, '_blank'); }, 800);
 });
 
 // ─── ENTER KEY ON FRIENDS INPUT ───────────────────────────────────────
