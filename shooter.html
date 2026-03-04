@@ -238,51 +238,30 @@ function makePlayerBody(name, avData){
   const bc = hexToInt(avData.bodyColor||'#00e5ff');
   const vc = hexToInt(avData.visorColor||'#00aaff');
   const ac = hexToInt(avData.accentColor||'#00e5ff');
-  const nameColor = bc;
   const grp=new THREE.Group();
   const bm=new THREE.MeshStandardMaterial({color:bc,roughness:0.55,metalness:0.35});
   const dm=new THREE.MeshStandardMaterial({color:0x0d1018,roughness:0.85});
   const vm=new THREE.MeshStandardMaterial({color:vc,emissive:vc,emissiveIntensity:0.6,roughness:0,metalness:0.5});
   const am=new THREE.MeshStandardMaterial({color:ac,emissive:ac,emissiveIntensity:0.3,roughness:0.3,metalness:0.7});
-
-  // torso (root pivot)
-  const torso=new THREE.Group(); torso.position.y=1.1; grp.add(torso);
-  const bodyMesh=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.7,0.3),bm); bodyMesh.castShadow=true; torso.add(bodyMesh);
-  // accent stripe
-  const stripe=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.06,0.32),am); stripe.position.y=0.05; torso.add(stripe);
-
-  // head group (rotates with yaw)
-  const headGrp=new THREE.Group(); headGrp.position.y=0.52; torso.add(headGrp);
-  const headMesh=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.32,0.32),bm); headMesh.castShadow=true; headGrp.add(headMesh);
-  const visor=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.11,0.05),vm); visor.position.set(0,0.02,0.17); headGrp.add(visor);
-
-  // arm pivots (upper = shoulder, animates)
-  const armL=new THREE.Group(); armL.position.set(-0.34,0.3,0); torso.add(armL);
-  const armLMesh=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.55,0.18),bm); armLMesh.position.y=-0.275; armLMesh.castShadow=true; armL.add(armLMesh);
-  const armR=new THREE.Group(); armR.position.set(0.34,0.3,0); torso.add(armR);
-  const armRMesh=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.55,0.18),bm); armRMesh.position.y=-0.275; armRMesh.castShadow=true; armR.add(armRMesh);
-
-  // leg pivots (hip)
-  const legL=new THREE.Group(); legL.position.set(-0.13,0,0); grp.add(legL);
-  const legLMesh=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.6,0.2),dm); legLMesh.position.y=0.15; legLMesh.castShadow=true; legL.add(legLMesh);
-  const legR=new THREE.Group(); legR.position.set(0.13,0,0); grp.add(legR);
-  const legRMesh=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.6,0.2),dm); legRMesh.position.y=0.15; legRMesh.castShadow=true; legR.add(legRMesh);
-  // boots
-  [-0.13,0.13].forEach(x=>{const b=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.1,0.25),dm);b.position.set(x,-0.22,0.03);b.castShadow=true;grp.add(b);});
-
-  // health bar
+  const mk=(w,h,d,mat,ox,oy,oz)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(ox,oy,oz);m.castShadow=true;return m;};
+  grp.add(mk(0.5,0.7,0.3,bm,0,1.1,0));
+  grp.add(mk(0.52,0.055,0.31,am,0,1.15,0));
+  grp.add(mk(0.32,0.32,0.32,bm,0,1.62,0));
+  grp.add(mk(0.28,0.11,0.05,vm,0,1.64,0.17));
+  grp.add(mk(0.14,0.55,0.18,bm,-0.34,1.07,0));
+  grp.add(mk(0.14,0.55,0.18,bm,0.34,1.07,0));
+  grp.add(mk(0.16,0.12,0.20,am,-0.34,1.36,0));
+  grp.add(mk(0.16,0.12,0.20,am,0.34,1.36,0));
+  grp.add(mk(0.18,0.65,0.2,dm,-0.13,0.42,0));
+  grp.add(mk(0.18,0.65,0.2,dm,0.13,0.42,0));
+  grp.add(mk(0.20,0.1,0.25,dm,-0.13,0.075,0.03));
+  grp.add(mk(0.20,0.1,0.25,dm,0.13,0.075,0.03));
   const hbg=new THREE.Mesh(new THREE.PlaneGeometry(0.6,0.065),new THREE.MeshBasicMaterial({color:0x330000,side:THREE.DoubleSide,depthTest:false}));
-  hbg.position.set(0,2.18,0);hbg.rotation.x=-0.3;grp.add(hbg);
+  hbg.position.set(0,2.1,0);hbg.rotation.x=-0.3;grp.add(hbg);
   const hbf=new THREE.Mesh(new THREE.PlaneGeometry(0.6,0.065),new THREE.MeshBasicMaterial({color:0x00ff44,side:THREE.DoubleSide,depthTest:false}));
-  hbf.position.set(0,2.19,0.001);hbf.rotation.x=-0.3;grp.add(hbf);
+  hbf.position.set(0,2.11,0.001);hbf.rotation.x=-0.3;grp.add(hbf);
   grp.userData.hbFill=hbf;
-
-  // name sprite
-  const sp=makeNameSprite(name,nameColor); sp.position.set(0,2.35,0); grp.add(sp);
-
-  // store bones for animation
-  grp.userData.bones={torso,headGrp,armL,armR,legL,legR};
-  grp.userData.animTime=Math.random()*Math.PI*2; // offset so not all in sync
+  const sp=makeNameSprite(name,bc); sp.position.set(0,2.25,0); grp.add(sp);
   return grp;
 }
 
@@ -433,7 +412,7 @@ ably.connection.on('connected',()=>{
 
   ch=ably.channels.get('shooter-room:'+ROOM);
 
-  ch.presence.enter({name:MY_NAME});
+  ch.presence.enter({name:MY_NAME,av:MY_AV});
 
   ch.presence.subscribe('enter',m=>{
     if(m.clientId===MY_ID)return;
@@ -505,9 +484,10 @@ ably.connection.on('disconnected',()=>{connEl.textContent='○ DISCONNECTED';con
 
 // ── POSITION BROADCAST ─────────────────────────────────────────────────
 let lastPos=0;
+let isMovingNow=false;
 function broadcastPos(){
   const now=Date.now(); if(now-lastPos<50||!ch||isDead)return; lastPos=now;
-  ch.publish('pos',{name:MY_NAME,x:camera.position.x,y:camera.position.y,z:camera.position.z,ry:yaw,hp:myHealth,av:MY_AV,moving:mv.lengthSq()>0});
+  ch.publish('pos',{name:MY_NAME,x:camera.position.x,z:camera.position.z,ry:yaw,hp:myHealth,av:MY_AV});
 }
 
 // ── MAIN LOOP ──────────────────────────────────────────────────────────
@@ -529,7 +509,8 @@ function update(dt){
   if(keys['KeyS']||keys['ArrowDown'])  mv.z+=1;
   if(keys['KeyA']||keys['ArrowLeft'])  mv.x-=1;
   if(keys['KeyD']||keys['ArrowRight']) mv.x+=1;
-  if(mv.lengthSq()>0)mv.normalize();
+  isMovingNow = mv.lengthSq()>0;
+  if(isMovingNow)mv.normalize();
   mv.applyEuler(new THREE.Euler(0,yaw,0));
   camera.position.add(mv.multiplyScalar(SPEED*dt));
   camera.position.x=Math.max(-98,Math.min(98,camera.position.x));
@@ -575,98 +556,11 @@ function update(dt){
     }
   }
 
-  // Stale player cleanup + animations
-  const now=Date.now();
+  // Stale player cleanup
+  const nowMs=Date.now();
   for(const[id,rp]of Object.entries(remotePlayers)){
-    if(now-rp.lastSeen>8000){removeRemote(id);continue;}
-    const b=rp.mesh.userData.bones;
-    if(!b)continue;
-    rp.mesh.userData.animTime=(rp.mesh.userData.animTime||0)+dt;
-    const t=rp.mesh.userData.animTime;
-    const isMoving=rp.moving||false;
-    const spd=isMoving?7:0.8; // idle sway vs walk speed
-    const amp=isMoving?0.55:0.04; // walk vs idle amplitude
-    // legs
-    b.legL.rotation.x=Math.sin(t*spd)*amp;
-    b.legR.rotation.x=-Math.sin(t*spd)*amp;
-    // arms (opposite to legs)
-    b.armL.rotation.x=-Math.sin(t*spd)*amp*0.7;
-    b.armR.rotation.x=Math.sin(t*spd)*amp*0.7;
-    // torso bob
-    b.torso.position.y=1.1+Math.abs(Math.sin(t*spd))*( isMoving?0.04:0.008);
-    // head look direction (yaw)
-    b.headGrp.rotation.y=0; // already handled by whole mesh rotation
-    // idle head nod
-    if(!isMoving) b.headGrp.rotation.x=Math.sin(t*0.7)*0.015;
+    if(nowMs-rp.lastSeen>8000)removeRemote(id);
   }
-
-  broadcastPos();
-}
-
-function loop(){
-  requestAnimationFrame(loop);
-  const dt=Math.min(clock.getDelta(),0.05);
-  update(dt);
-  renderer.render(scene,camera);
-}
-
-// ── IN-GAME CHAT ───────────────────────────────────────────────────────
-const chatLog = document.getElementById("chat-log");
-const chatRow = document.getElementById("chat-input-row");
-const chatInput = document.getElementById("chat-input");
-let chatOpen = false;
-
-function addChatMsg(name, text, sys) {
-  const el = document.createElement("div");
-  el.className = "chat-msg" + (sys ? " sys" : "");
-  if (sys) { el.textContent = text; }
-  else {
-    const col = "#" + colorForName(name).toString(16).padStart(6,"0");
-    el.innerHTML = `<span class="cn" style="color:${col}">${name.toUpperCase()}:</span> ${text.replace(/</g,"&lt;")}`;
-  }
-  chatLog.appendChild(el);
-  chatLog.scrollTop = chatLog.scrollHeight;
-  // fade out after 8s unless chat is open
-  const timer = setTimeout(() => { if (!chatOpen) el.style.opacity = "0.0"; }, 8000);
-  el.dataset.timer = timer;
-}
-
-function openChat() {
-  chatOpen = true;
-  chatRow.classList.add("open");
-  chatInput.focus();
-  if (locked) document.exitPointerLock();
-  // restore all faded msgs
-  chatLog.querySelectorAll(".chat-msg").forEach(m => m.style.opacity = "1");
-}
-
-function closeChat() {
-  chatOpen = false;
-  chatRow.classList.remove("open");
-  chatInput.blur();
-}
-
-function sendChat() {
-  const txt = chatInput.value.trim();
-  if (!txt) { closeChat(); return; }
-  chatInput.value = "";
-  if (ch) ch.publish("chat", { name: MY_NAME, text: txt });
-  addChatMsg(MY_NAME, txt);
-  closeChat();
-}
-
-document.getElementById("chat-send").addEventListener("click", sendChat);
-chatInput.addEventListener("keydown", e => {
-  if (e.key === "Enter") { e.preventDefault(); sendChat(); }
-  if (e.key === "Escape") { chatInput.value = ""; closeChat(); }
-  e.stopPropagation();
-});
-chatInput.addEventListener("keyup", e => e.stopPropagation());
-
-document.addEventListener("keydown", e => {
-  if (chatOpen) return;
-  if (e.code === "KeyT") { e.preventDefault(); openChat(); }
-});
 
 // receive chat from Ably
 function hookChat() {
